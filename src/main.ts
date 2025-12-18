@@ -28,6 +28,7 @@ type DrawLayer = (d: DrawCtx) => void;
 
 const renderingPipeline: DrawLayer[] = [
   clear,
+  renderKeyboard,
   renderFixedUI
 ];
 
@@ -73,8 +74,9 @@ requestAnimationFrame(loop);
 
 function clear(d: DrawCtx){
   d.ctx.save();
+  d.ctx.translate(0.5, 0.5);
   for(let x=0; x<canvas.width; x+=20){
-    d.ctx.strokeStyle = "#494949c0";
+    d.ctx.strokeStyle = "#8686863d";
     d.ctx.beginPath();
     d.ctx.moveTo(x, 0);
     d.ctx.lineTo(x, canvas.height);
@@ -86,7 +88,8 @@ function clear(d: DrawCtx){
     d.ctx.lineTo(canvas.width, y);
     d.ctx.stroke();
   }
-
+  d.ctx.restore();
+  d.ctx.save();
   const div = 40;
   for(let t=0; t<div; t++){
     const alpha = 1 - t/div;
@@ -94,12 +97,13 @@ function clear(d: DrawCtx){
     d.ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
     fillRectC(d.ctx, canvas.width-50 + t, 40 + wob*20, 2, 2);
   }
-  d.ctx.translate(100, 0);
+  d.ctx.rotate(0);
   d.ctx.imageSmoothingEnabled = false;
   d.ctx.font = "16px misaki";
   d.ctx.fillStyle = "#d2fff8ff";
-  d.ctx.textBaseline = "top";
-  d.ctx.fillText("(・ヮ・* )", 20, Math.round(20+ Math.sin(d.time*3)*5));
+  d.ctx.textBaseline = "bottom";
+  const floatY = Math.sin(d.time * 3) * 5;
+  d.ctx.fillText("( *・ヮ・)", 20, Math.round(canvas.height-20+floatY));
   d.ctx.restore();
 }
 
@@ -118,6 +122,29 @@ function renderFixedUI(d: DrawCtx){
   d.ctx.fillRect(0, 0, canvas.width/3, canvas.height);
   d.ctx.strokeStyle = "#ddd";
   d.ctx.strokeRect(0, 0, canvas.width/3, canvas.height);
+}
+
+function renderKeyboard(d: DrawCtx) {
+  d.ctx.save();
+  const posX = 20;
+  const keyWidth = 18;
+  const keyHeight = 60;
+  const baseY = canvas.height - keyHeight -20;
+
+  // white
+  for (let i = 0; i < 7; i++) {
+    d.ctx.strokeStyle = "#f8f8f8";
+    d.ctx.strokeRect(posX + i * keyWidth, baseY, keyWidth - 3, keyHeight);
+  }
+  // black
+  [1,2,4,5,6].forEach(i => {
+    d.ctx.fillStyle = bg_col;
+    d.ctx.fillRect(posX + i * keyWidth - keyWidth/3 -2, baseY, keyWidth/2 + 4, keyHeight*0.7 + 2);
+    d.ctx.strokeStyle = "#f8f8f8";
+    d.ctx.strokeRect(posX + i * keyWidth- keyWidth/3, baseY, keyWidth/2, keyHeight*0.7);
+  });
+
+  d.ctx.restore();
 }
 
 function fillRectC(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number){
