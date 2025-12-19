@@ -24,13 +24,33 @@ type DrawCtx = {
   ctx: CanvasRenderingContext2D;
   time: number;
 };
-type DrawLayer = (d: DrawCtx) => void;
+type DrawLayer = {
+  draw: (d: DrawCtx) => void;
+  visible?: boolean;
+};
 
 const renderingPipeline: DrawLayer[] = [
-  clear,
-  renderKeyboard,
-  renderFixedUI
+  { draw: clear },
+  { draw: renderKeyboard },
+  { draw: renderFixedUI },
+  { draw: renderDebugWindow },
+  { draw: renderMascot },
 ];
+
+
+type Point = {
+  x: number;
+  y: number;
+}
+const mouse: Point = {x:0, y:0};
+
+canvas.addEventListener("mousemove", e => {
+  mouse.x = e.offsetX;
+  mouse.y = e.offsetY;
+});
+canvas.addEventListener("click", e => {
+  clickEventHandler({x:e.offsetX, y:e.offsetY});
+});
 
 type Note = {
   t: number;    // startTime
@@ -42,38 +62,26 @@ const notes: Note[] = [];
 
 let start = 1000;
 
+// ============== mainloop ==============
 function loop(now: number) {
-
   const t = (now - start) / 1000;
-
-  ctx.fillStyle = bg_col;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  const hitLine = canvas.height - 100;
-
-  ctx.strokeStyle = "#444";
-  ctx.beginPath();
-  ctx.moveTo(0, hitLine);
-  ctx.lineTo(canvas.width, hitLine);
-  ctx.stroke();
-
-  for (const n of notes) {
-    const y = (n.t -t) * -200 + canvas.height;
-
-    ctx.fillStyle = "rgba(69, 129, 94, 1)";
-    ctx.fillRect(n.d, y, 24, 40);
-    ctx.strokeStyle = "rgba(255, 255, 255, 1)";
-    ctx.strokeRect(n.d, y, 24, 40);
-  }
+  ctx.font = "16px misaki";
 
   for(const layer of renderingPipeline){
-    layer({ctx: ctx, time: t});
+    if(!(layer.visible ?? true)) continue;
+    withCtx(ctx,()=>{
+      layer.draw({ctx: ctx, time: t});
+    });
   }
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 
+
 function clear(d: DrawCtx){
-  d.ctx.save();
+  d.ctx.fillStyle = bg_col;
+  d.ctx.fillRect(0, 0, canvas.width, canvas.height);
+
   d.ctx.translate(0.5, 0.5);
   for(let x=0; x<canvas.width; x+=20){
     d.ctx.strokeStyle = "#8686863d";
@@ -88,8 +96,9 @@ function clear(d: DrawCtx){
     d.ctx.lineTo(canvas.width, y);
     d.ctx.stroke();
   }
-  d.ctx.restore();
-  d.ctx.save();
+}
+
+function renderMascot(d: DrawCtx){
   const div = 40;
   for(let t=0; t<div; t++){
     const alpha = 1 - t/div;
@@ -99,33 +108,28 @@ function clear(d: DrawCtx){
   }
   d.ctx.rotate(0);
   d.ctx.imageSmoothingEnabled = false;
-  d.ctx.font = "16px misaki";
   d.ctx.fillStyle = "#d2fff8ff";
   d.ctx.textBaseline = "bottom";
-  const floatY = Math.sin(d.time * 3) * 5;
-  d.ctx.fillText("( *・ヮ・)", 20, Math.round(canvas.height-20+floatY));
-  d.ctx.restore();
+  const floatY = Math.sin(d.time * 3) * 3;
+  const blink = Math.sin(d.time * 2.1)*0.5 + Math.sin(d.time * 7.7)*0.5;
+  const face = blink > 0.85 ? "(- ヮ- * )" :"(・ヮ・* )";
+  d.ctx.fillText(face, canvas.width-100, Math.round(canvas.height-20+floatY));
 }
 
 function renderNotes(d: DrawCtx){
-  d.ctx.save();
-
-  d.ctx.restore();
 }
 function renderScore(d: DrawCtx){
-  d.ctx.save();
-
-  d.ctx.restore();
 }
+
 function renderFixedUI(d: DrawCtx){
   d.ctx.fillStyle = "#11111167";
   d.ctx.fillRect(0, 0, canvas.width/3, canvas.height);
+  d.ctx.translate(0.5, 0.5);
   d.ctx.strokeStyle = "#ddd";
-  d.ctx.strokeRect(0, 0, canvas.width/3, canvas.height);
+  d.ctx.strokeRect(0, 0, canvas.width/3, canvas.height-1);
 }
 
 function renderKeyboard(d: DrawCtx) {
-  d.ctx.save();
   const posX = 20;
   const keyWidth = 18;
   const keyHeight = 60;
@@ -143,10 +147,61 @@ function renderKeyboard(d: DrawCtx) {
     d.ctx.strokeStyle = "#f8f8f8";
     d.ctx.strokeRect(posX + i * keyWidth- keyWidth/3, baseY, keyWidth/2, keyHeight*0.7);
   });
-
-  d.ctx.restore();
 }
 
-function fillRectC(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number){
+type DebugLog = {
+  log: string,
+  t: number,
+  type?: string
+}
+const logQueue: DebugLog[] = [];
+
+function renderDebugWindow(d: DrawCtx){
+  // reticle
+  d.ctx.fillStyle = "#31ffa95b";
+  d.ctx.fillRect(mouse.x, 0, 1, canvas.height);
+  d.ctx.fillRect(0, mouse.y, canvas.width, 1);
+
+  const br = () => d.ctx.translate(0,16);
+  const digit = (num: number) => num.toFixed(2);
+  d.ctx.fillStyle = "#7dff994f";
+  d.ctx.textBaseline = "top";
+  d.ctx.translate(20, 20);
+  [
+    "debug",
+    `t: ${digit(d.time)}`,
+    `global_t: ${digit(performance.now()/1000)}`,
+    `x: ${mouse.x}, y: ${mouse.y}`,
+  ].forEach(line => {
+    d.ctx.fillText(line, 0, 0);
+    br();
+  });
+}
+
+function clickEventHandler(p: Point){
+  console.log(p.x, p.y);
+}
+
+function isInsideRect(p: Point, rx: number, ry: number, rw: number, rh: number) {
+  return p.x >= rx && p.x <= rx + rw && p.y >= ry && p.y <= ry + rh;
+}
+
+function fillRectC(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number
+){
   ctx.fillRect(x-(w/2), y-(h/2), w, h);
 }
+
+function withCtx(
+  ctx: CanvasRenderingContext2D,
+  fn: () => void
+){
+  ctx.save();
+  try {
+    fn();
+  } finally {
+    ctx.restore();
+  }
+}
+
