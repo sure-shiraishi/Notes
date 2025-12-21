@@ -154,7 +154,10 @@ type DebugLog = {
   t: number,
   type?: string
 }
-const logQueue: DebugLog[] = [];
+let logQueue: DebugLog[] = [];
+function debugLog(msg: string, lifeTime: number = 3){
+  logQueue.push({log: msg, t: lifeTime}); 
+}
 
 function renderDebugWindow(d: DrawCtx){
   // reticle
@@ -176,10 +179,20 @@ function renderDebugWindow(d: DrawCtx){
     d.ctx.fillText(line, 0, 0);
     br();
   });
+  br();
+
+  logQueue.forEach(line => {
+    d.ctx.fillText(line.log, 0, 0);
+    line.t -= 0.016;
+    br();
+  });
+  while(logQueue.length > 0 && logQueue[0].t <= 0){
+    logQueue.shift();
+  }
 }
 
 function clickEventHandler(p: Point){
-  console.log(p.x, p.y);
+  debugLog(`point ${p.x}, ${p.y}`);
 }
 
 function isInsideRect(p: Point, rx: number, ry: number, rw: number, rh: number) {
