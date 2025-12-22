@@ -22,19 +22,21 @@ window.onresize = resize;
 
 type DrawCtx = {
   ctx: CanvasRenderingContext2D;
-  time: number;
+  time: number; // [s]
+  offset: Point;
 };
 type DrawLayer = {
   draw: (d: DrawCtx) => void;
   visible?: boolean;
+  offset: Point;
 };
 
 const renderingPipeline: DrawLayer[] = [
-  { draw: clear },
-  { draw: renderKeyboard },
-  { draw: renderFixedUI },
-  { draw: renderDebugWindow },
-  { draw: renderMascot },
+  { offset: {x:0, y:0}, draw: clear },
+  { offset: {x:0, y:0}, draw: renderKeyboard },
+  { offset: {x:0, y:0}, draw: renderFixedUI },
+  { offset: {x:0, y:0}, draw: renderDebugWindow },
+  { offset: {x:0, y:0}, draw: renderMascot },
 ];
 
 
@@ -52,25 +54,43 @@ canvas.addEventListener("click", e => {
   clickEventHandler({x:e.offsetX, y:e.offsetY});
 });
 
+const WHOLE = 1;
+const HALF  = 0.5;
+const QUARTER = 0.25;
+const EIGHTH = 0.125;
+
 type Note = {
   t: number;    // startTime
-  d: number;    // Duration
-  p: number;    // Pitch
-  sl: number;   // StaffLine
+  d: number;    // Duration  [1/value]
+  p: number;    // Pitch     [MIDI] 60 = C4 = 261.63Hz
+  sl: number;   // StaffLine C=0
 }
-const notes: Note[] = [];
+let notes: Note[] = [
+  {t: 0,    d: QUARTER, p: 60, sl: 0 },
+  {t: 0.25, d: QUARTER, p: 62, sl: 1 },
+  {t: 0.5,  d: QUARTER, p: 64, sl: 2 },
+  {t: 0.75, d: QUARTER, p: 62, sl: 1 },
+  {t: 1,    d: QUARTER, p: 60, sl: 0 },
+  {t: 1.25, d: HALF,    p: 62, sl: 1 },
+];
 
-let start = 1000;
+const start = 0;
+let lastFrame = 0;
+let dt = 0;
 
 // ============== mainloop ==============
 function loop(now: number) {
-  const t = (now - start) / 1000;
+  const t = now / 1000 - start;
+  dt = t - lastFrame;
+  lastFrame = t;
+
   ctx.font = "16px misaki";
 
   for(const layer of renderingPipeline){
     if(!(layer.visible ?? true)) continue;
     withCtx(ctx,()=>{
-      layer.draw({ctx: ctx, time: t});
+      ctx.translate(layer.offset.x, layer.offset.y);
+      layer.draw({ctx: ctx, time: t, offset: layer.offset});
     });
   }
   requestAnimationFrame(loop);
@@ -123,17 +143,19 @@ function renderScore(d: DrawCtx){
 
 function renderFixedUI(d: DrawCtx){
   d.ctx.fillStyle = "#11111167";
-  d.ctx.fillRect(0, 0, canvas.width/3, canvas.height);
+  const height = 40;
+  d.ctx.fillRect(0, canvas.height-height, canvas.width, height);
   d.ctx.translate(0.5, 0.5);
-  d.ctx.strokeStyle = "#ddd";
-  d.ctx.strokeRect(0, 0, canvas.width/3, canvas.height-1);
+  d.ctx.strokeStyle = "#dddddd57";
+  d.ctx.strokeRect(0, canvas.height-height, canvas.width-2, height-1);
 }
 
 function renderKeyboard(d: DrawCtx) {
   const posX = 20;
   const keyWidth = 18;
   const keyHeight = 60;
-  const baseY = canvas.height - keyHeight -20;
+  const baseY = canvas.height - keyHeight -50;
+  d.ctx.globalAlpha = 0.8;
 
   // white
   for (let i = 0; i < 7; i++) {
@@ -156,7 +178,7 @@ type DebugLog = {
 }
 let logQueue: DebugLog[] = [];
 function debugLog(msg: string, lifeTime: number = 3){
-  logQueue.push({log: msg, t: lifeTime}); 
+  logQueue.push({log: msg, t: lifeTime});
 }
 
 function renderDebugWindow(d: DrawCtx){
@@ -183,7 +205,7 @@ function renderDebugWindow(d: DrawCtx){
 
   logQueue.forEach(line => {
     d.ctx.fillText(line.log, 0, 0);
-    line.t -= 0.016;
+    line.t -= dt;
     br();
   });
   while(logQueue.length > 0 && logQueue[0].t <= 0){
@@ -197,6 +219,28 @@ function clickEventHandler(p: Point){
 
 function isInsideRect(p: Point, rx: number, ry: number, rw: number, rh: number) {
   return p.x >= rx && p.x <= rx + rw && p.y >= ry && p.y <= ry + rh;
+}
+type Rect = {
+  x: number,
+  y: number,
+  w: number,
+  h: number
+}
+
+const keyboardConfig = {
+  ppw: 16, // [pixels per white]
+  minOctave: 2,
+  maxOctave: 6
+}
+
+function pitchToX(pitch: number) {
+  const WHITE = keyboardConfig.ppw;
+  const BLACK = WHITE * 0.6;
+  const octave = Math.floor(pitch / 12) - 1; // MIDIオクターブ補正
+  const noteInOctave = pitch % 12;
+  const whiteOrder = [0,2,4,5,7,9,11]; // C D E F G A B
+  const idx = whiteOrder.indexOf(noteInOctave);
+  return (octave - keyboardConfig.minOctave) * 7 * WHITE + idx * WHITE;
 }
 
 function fillRectC(
