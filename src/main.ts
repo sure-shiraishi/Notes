@@ -23,7 +23,7 @@ window.onresize = resize;
 type DrawCtx = {
   ctx: CanvasRenderingContext2D;
   time: number; // [s]
-  offset: Point;
+  layer: DrawLayer;
 };
 type DrawLayer = {
   draw: (d: DrawCtx) => void;
@@ -31,13 +31,22 @@ type DrawLayer = {
   offset: Point;
 };
 
-const renderingPipeline: DrawLayer[] = [
-  { offset: {x:0, y:0}, draw: clear },
-  { offset: {x:0, y:0}, draw: renderKeyboard },
-  { offset: {x:0, y:0}, draw: renderFixedUI },
-  { offset: {x:0, y:0}, draw: renderDebugWindow },
-  { offset: {x:0, y:0}, draw: renderMascot },
+type LayerID = "clear" | "keyboard" | "fixedUI" | "debug" | "mascot";
+
+const renderingPipeline: LayerID[] = [
+  "clear", 
+  "keyboard", 
+  "fixedUI", 
+  "debug", 
+  "mascot",
 ];
+const layers = {
+  clear    : { offset: {x:0, y:0}, draw: clear },
+  keyboard : { offset: {x:0, y:0}, draw: renderKeyboard },
+  fixedUI  : { offset: {x:0, y:0}, draw: renderFixedUI },
+  debug    : { offset: {x:0, y:0}, draw: renderDebugWindow },
+  mascot   : { offset: {x:0, y:0}, draw: renderMascot },
+} satisfies Record<LayerID, DrawLayer>;
 
 
 type Point = {
@@ -86,16 +95,16 @@ function loop(now: number) {
 
   ctx.font = "16px misaki";
 
-  for(const layer of renderingPipeline){
+  for(const layerID of renderingPipeline){
+    const layer = layers[layerID] as DrawLayer;
     if(!(layer.visible ?? true)) continue;
     withCtx(ctx,()=>{
       ctx.translate(layer.offset.x, layer.offset.y);
-      layer.draw({ctx: ctx, time: t, offset: layer.offset});
+      layer.draw({ctx: ctx, time: t, layer: layer});
     });
   }
   requestAnimationFrame(loop);
 }
-requestAnimationFrame(loop);
 
 
 function clear(d: DrawCtx){
@@ -212,20 +221,47 @@ function renderDebugWindow(d: DrawCtx){
     logQueue.shift();
   }
 }
-
-function clickEventHandler(p: Point){
-  debugLog(`point ${p.x}, ${p.y}`);
-}
-
-function isInsideRect(p: Point, rx: number, ry: number, rw: number, rh: number) {
-  return p.x >= rx && p.x <= rx + rw && p.y >= ry && p.y <= ry + rh;
-}
 type Rect = {
   x: number,
   y: number,
   w: number,
   h: number
 }
+type PhysicalObject = {
+  rect: Rect,
+  layer: DrawLayer
+}
+const physicalLayer: PhysicalObject[] = [];
+
+function registerPhysicalObject(){
+  physicalLayer.push(
+    {
+      rect:{ x:0, y:0, w:20, h:20},
+      layer: layers["fixedUI"]
+    },
+    {
+      rect:{ x:0, y:0, w:20, h:20},
+      layer: layers["fixedUI"]
+    },
+  );
+}
+registerPhysicalObject();
+console.log(physicalLayer);
+
+function checkClicked(p: Point){
+
+}
+
+
+function clickEventHandler(p: Point){
+  debugLog(`point ${p.x}, ${p.y}`);
+  checkClicked(p);
+}
+
+function isInsideRect(p: Point, rx: number, ry: number, rw: number, rh: number) {
+  return p.x >= rx && p.x <= rx + rw && p.y >= ry && p.y <= ry + rh;
+}
+
 
 const keyboardConfig = {
   ppw: 16, // [pixels per white]
@@ -262,3 +298,4 @@ function withCtx(
   }
 }
 
+requestAnimationFrame(loop);
