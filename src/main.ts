@@ -34,10 +34,10 @@ type DrawLayer = {
 type LayerID = "clear" | "keyboard" | "fixedUI" | "debug" | "mascot";
 
 const renderingPipeline: LayerID[] = [
-  "clear", 
-  "keyboard", 
-  "fixedUI", 
-  "debug", 
+  "clear",
+  "keyboard",
+  "fixedUI",
+  "debug",
   "mascot",
 ];
 const layers = {
@@ -233,23 +233,25 @@ type PhysicalObject = {
 }
 const physicalLayer: PhysicalObject[] = [];
 
+
 function registerPhysicalObject(){
   physicalLayer.push(
     {
-      rect:{ x:0, y:0, w:20, h:20},
+      rect:{ x:0, y:0, w:200, h:200},
       layer: layers["fixedUI"]
     },
     {
-      rect:{ x:0, y:0, w:20, h:20},
+      rect:{ x:200, y:0, w:200, h:200},
       layer: layers["fixedUI"]
     },
   );
 }
 registerPhysicalObject();
-console.log(physicalLayer);
 
 function checkClicked(p: Point){
-
+  physicalLayer.forEach( layer =>{
+    
+  });
 }
 
 
