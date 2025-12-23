@@ -150,35 +150,6 @@ function renderNotes(d: DrawCtx){
 function renderScore(d: DrawCtx){
 }
 
-function renderFixedUI(d: DrawCtx){
-  d.ctx.fillStyle = "#11111167";
-  const height = 40;
-  d.ctx.fillRect(0, canvas.height-height, canvas.width, height);
-  d.ctx.translate(0.5, 0.5);
-  d.ctx.strokeStyle = "#dddddd57";
-  d.ctx.strokeRect(0, canvas.height-height, canvas.width-2, height-1);
-}
-
-function renderKeyboard(d: DrawCtx) {
-  const posX = 20;
-  const keyWidth = 18;
-  const keyHeight = 60;
-  const baseY = canvas.height - keyHeight -50;
-  d.ctx.globalAlpha = 0.8;
-
-  // white
-  for (let i = 0; i < 7; i++) {
-    d.ctx.strokeStyle = "#f8f8f8";
-    d.ctx.strokeRect(posX + i * keyWidth, baseY, keyWidth - 3, keyHeight);
-  }
-  // black
-  [1,2,4,5,6].forEach(i => {
-    d.ctx.fillStyle = bg_col;
-    d.ctx.fillRect(posX + i * keyWidth - keyWidth/3 -2, baseY, keyWidth/2 + 4, keyHeight*0.7 + 2);
-    d.ctx.strokeStyle = "#f8f8f8";
-    d.ctx.strokeRect(posX + i * keyWidth- keyWidth/3, baseY, keyWidth/2, keyHeight*0.7);
-  });
-}
 
 type DebugLog = {
   log: string,
@@ -221,6 +192,26 @@ function renderDebugWindow(d: DrawCtx){
     logQueue.shift();
   }
 }
+
+
+function renderFixedUI(d: DrawCtx){
+  d.ctx.globalAlpha = 0.5;
+  d.ctx.fillStyle = "#333";
+  const height = 40;
+  d.ctx.translate(0, canvas.height-height)
+
+  d.ctx.fillRect(0, 0, canvas.width, height);
+  withCtx(d.ctx, ()=>{
+    d.ctx.translate(0.5, 0.5);
+
+    d.ctx.strokeStyle = "#eee";
+    d.ctx.strokeRect(0, 0, canvas.width-2, height-1);
+
+    d.ctx.strokeRect
+  });
+}
+
+
 type Rect = {
   x: number,
   y: number,
@@ -228,40 +219,38 @@ type Rect = {
   h: number
 }
 type PhysicalObject = {
+  id: string,
   rect: Rect,
-  layer: DrawLayer
+  layer: DrawLayer,
+  event: ((p: Point) => {}) | null
 }
 const physicalLayer: PhysicalObject[] = [];
-
 
 function registerPhysicalObject(){
   physicalLayer.push(
     {
-      rect:{ x:0, y:0, w:200, h:200},
-      layer: layers["fixedUI"]
-    },
-    {
-      rect:{ x:200, y:0, w:200, h:200},
-      layer: layers["fixedUI"]
-    },
+      id: "start",
+      rect:{ x:0, y:0, w:30, h:200},
+      layer: layers["fixedUI"],
+      event: null
+    }
   );
 }
 registerPhysicalObject();
 
 function checkClicked(p: Point){
-  physicalLayer.forEach( layer =>{
-    
-  });
-}
-
-
-function clickEventHandler(p: Point){
-  debugLog(`point ${p.x}, ${p.y}`);
-  checkClicked(p);
-}
-
-function isInsideRect(p: Point, rx: number, ry: number, rw: number, rh: number) {
-  return p.x >= rx && p.x <= rx + rw && p.y >= ry && p.y <= ry + rh;
+  let hit = false;
+  for(const obj of physicalLayer){
+    const shiftedRect = {
+      x: obj.rect.x + obj.layer.offset.x,
+      y: obj.rect.y + obj.layer.offset.y,
+      w: obj.rect.w,
+      h: obj.rect.h
+    }
+    hit = isInsideRect(p, shiftedRect); 
+    if(hit) break;
+  };
+  debugLog("inside:"+ hit);
 }
 
 
@@ -269,6 +258,27 @@ const keyboardConfig = {
   ppw: 16, // [pixels per white]
   minOctave: 2,
   maxOctave: 6
+}
+
+function renderKeyboard(d: DrawCtx) {
+  const posX = 20;
+  const keyWidth = 18;
+  const keyHeight = 60;
+  const baseY = canvas.height - keyHeight -50;
+  d.ctx.globalAlpha = 0.8;
+
+  // white
+  for (let i = 0; i < 7; i++) {
+    d.ctx.strokeStyle = "#f8f8f8";
+    d.ctx.strokeRect(posX + i * keyWidth, baseY, keyWidth - 3, keyHeight);
+  }
+  // black
+  [1,2,4,5,6].forEach(i => {
+    d.ctx.fillStyle = bg_col;
+    d.ctx.fillRect(posX + i * keyWidth - keyWidth/3 -2, baseY, keyWidth/2 + 4, keyHeight*0.7 + 2);
+    d.ctx.strokeStyle = "#f8f8f8";
+    d.ctx.strokeRect(posX + i * keyWidth- keyWidth/3, baseY, keyWidth/2, keyHeight*0.7);
+  });
 }
 
 function pitchToX(pitch: number) {
@@ -279,6 +289,15 @@ function pitchToX(pitch: number) {
   const whiteOrder = [0,2,4,5,7,9,11]; // C D E F G A B
   const idx = whiteOrder.indexOf(noteInOctave);
   return (octave - keyboardConfig.minOctave) * 7 * WHITE + idx * WHITE;
+}
+
+function clickEventHandler(p: Point){
+  debugLog(`point ${p.x}, ${p.y}`);
+  checkClicked(p);
+}
+
+function isInsideRect(p: Point, r: Rect) {
+  return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
 }
 
 function fillRectC(
