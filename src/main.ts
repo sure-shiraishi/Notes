@@ -280,22 +280,38 @@ function checkClicked(p: Point){
       break;
     }
   };
-  debugLog("inside:"+ hit);
 }
 
-const keyboardConfig = new class KeyboardConfig {
+class MusicContext {
+  bpm = 120; // [beats per minute]
+}
+const musicCtx = new MusicContext();
+
+const keyboardCfg = new class KeyboardConfig {
   ppw = 20;  // [pixels width per white]
   minOctave = 2;
   maxOctave = 6;
 
-  bpm = 120; // [beats per minute]
   beats = 4  // [beats per measure]
   scrollSpeed = 20; // [pixels / s]
 
+  
+  whiteOrder = [0,2,4,5,7,9,11]; // C D E F G A B
+
   get pxPerBeat(){ // [pixels height per beat]
     // [pixels / sec]*[sec / min]*[min / beats]
-    return this.scrollSpeed * 60 / this.bpm;
+    return this.scrollSpeed * 60 / musicCtx.bpm;
   }
+
+  pitchToX(pitch: number) { // pixels
+    const octave = Math.floor(pitch / 12) - 1; // MIDIオクターブ補正
+    const noteInOctave = pitch % 12;
+
+    const octaveShift = (octave - this.minOctave) * 7 * this.ppw 
+    const pitchShift = this.whiteOrder.indexOf(noteInOctave) * this.ppw;
+    return octaveShift + pitchShift;
+  }
+
 }();
 
 function renderKeyboard(d: DrawCtx) {
@@ -319,15 +335,6 @@ function renderKeyboard(d: DrawCtx) {
   });
 }
 
-function pitchToX(pitch: number) {
-  const WHITE = keyboardConfig.ppw;
-  const BLACK = WHITE * 0.6;
-  const octave = Math.floor(pitch / 12) - 1; // MIDIオクターブ補正
-  const noteInOctave = pitch % 12;
-  const whiteOrder = [0,2,4,5,7,9,11]; // C D E F G A B
-  const idx = whiteOrder.indexOf(noteInOctave);
-  return (octave - keyboardConfig.minOctave) * 7 * WHITE + idx * WHITE;
-}
 
 function clickEventHandler(p: Point){
   debugLog(`point ${p.x}, ${p.y}`);
