@@ -31,10 +31,13 @@ type DrawLayer = {
   offset: Point;
 };
 
-type LayerID = "clear" | "keyboard" | "fixedUI" | "debug" | "mascot";
+
+type LayerID = "clear" | "notes" | "score" | "keyboard" | "fixedUI" | "debug" | "mascot";
 
 const renderingPipeline: LayerID[] = [
   "clear",
+  "notes",
+  "score",
   "keyboard",
   "fixedUI",
   "debug",
@@ -42,6 +45,8 @@ const renderingPipeline: LayerID[] = [
 ];
 const layers = {
   clear    : { offset: {x:0, y:0}, draw: clear },
+  notes    : { offset: {x:0, y:0}, draw: renderNotes },
+  score    : { offset: {x:0, y:0}, draw: renderScore },
   keyboard : { offset: {x:0, y:0}, draw: renderKeyboard },
   fixedUI  : { offset: {x:0, y:0}, draw: renderFixedUI },
   debug    : { offset: {x:0, y:0}, draw: renderDebugWindow },
@@ -83,15 +88,17 @@ let notes: Note[] = [
   {t: 1.25, d: HALF,    p: 62, sl: 1 },
 ];
 
-const start = 0;
+let lastgt = 0;
 let lastFrame = 0;
 let dt = 0;
+let pause = false;
 
 // ============== mainloop ==============
 function loop(now: number) {
-  const t = now / 1000 - start;
-  dt = t - lastFrame;
+  dt = (now - lastgt) / 1000;
+  const t = pause ? lastFrame + dt : lastFrame;
   lastFrame = t;
+  lastgt = now;
 
   ctx.font = "16px misaki";
 
@@ -110,16 +117,16 @@ function loop(now: number) {
 function clear(d: DrawCtx){
   d.ctx.fillStyle = bg_col;
   d.ctx.fillRect(0, 0, canvas.width, canvas.height);
-
+  const grid = 20;
   d.ctx.translate(0.5, 0.5);
-  for(let x=0; x<canvas.width; x+=20){
+  for(let x=0; x<canvas.width; x+=grid){
     d.ctx.strokeStyle = "#8686863d";
     d.ctx.beginPath();
     d.ctx.moveTo(x, 0);
     d.ctx.lineTo(x, canvas.height);
     d.ctx.stroke();
   }
-  for(let y=0; y<canvas.height; y+=20){
+  for(let y=0; y<canvas.height; y+=grid){
     d.ctx.beginPath();
     d.ctx.moveTo(0, y);
     d.ctx.lineTo(canvas.width, y);
@@ -135,14 +142,18 @@ function renderMascot(d: DrawCtx){
     d.ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
     fillRectC(d.ctx, canvas.width-50 + t, 40 + wob*20, 2, 2);
   }
-  d.ctx.rotate(0);
+
   d.ctx.imageSmoothingEnabled = false;
   d.ctx.fillStyle = "#d2fff8ff";
   d.ctx.textBaseline = "bottom";
-  const floatY = Math.sin(d.time * 3) * 3;
-  const blink = Math.sin(d.time * 2.1)*0.5 + Math.sin(d.time * 7.7)*0.5;
+  const time = performance.now() / 1000;
+  const floatY = Math.sin(time * 3) * 3;
+  const blink = Math.sin(time * 2.1)*0.5 + Math.sin(time * 7.7)*0.5;
   const face = blink > 0.85 ? "(- ヮ- * )" :"(・ヮ・* )";
   d.ctx.fillText(face, canvas.width-100, Math.round(canvas.height-20+floatY));
+}
+
+const notesConfig = {
 }
 
 function renderNotes(d: DrawCtx){
@@ -193,12 +204,22 @@ function renderDebugWindow(d: DrawCtx){
   }
 }
 
+function constTranslate(d: DrawCtx, offset: Point){
+  const diffX = offset.x - d.layer.offset.x;
+  const diffY = offset.y - d.layer.offset.y;
+
+  if(diffX !== 0 || diffY !== 0){
+    d.layer.offset = {x: offset.x, y: offset.y};
+    d.ctx.translate(diffX, diffY);
+  }
+}
+
 
 function renderFixedUI(d: DrawCtx){
   d.ctx.globalAlpha = 0.5;
   d.ctx.fillStyle = "#333";
   const height = 40;
-  d.ctx.translate(0, canvas.height-height)
+  constTranslate(d, {x:0, y:canvas.height-height});
 
   d.ctx.fillRect(0, 0, canvas.width, height);
   withCtx(d.ctx, ()=>{
@@ -206,11 +227,17 @@ function renderFixedUI(d: DrawCtx){
 
     d.ctx.strokeStyle = "#eee";
     d.ctx.strokeRect(0, 0, canvas.width-2, height-1);
-
-    d.ctx.strokeRect
   });
+
+  d.ctx.fillStyle = "#eee"
+  const margin = 10;
+  d.ctx.fillRect(margin, margin, height-margin*2, height-margin*2);
 }
 
+function testEvent(p: Point){
+  debugLog("testEvent!")
+  pause = !pause;
+}
 
 type Rect = {
   x: number,
@@ -222,7 +249,7 @@ type PhysicalObject = {
   id: string,
   rect: Rect,
   layer: DrawLayer,
-  event: ((p: Point) => {}) | null
+  event: ((p: Point) => void) | null
 }
 const physicalLayer: PhysicalObject[] = [];
 
@@ -230,9 +257,9 @@ function registerPhysicalObject(){
   physicalLayer.push(
     {
       id: "start",
-      rect:{ x:0, y:0, w:30, h:200},
+      rect:{ x:10, y:10, w:20, h:20},
       layer: layers["fixedUI"],
-      event: null
+      event: testEvent
     }
   );
 }
@@ -247,18 +274,29 @@ function checkClicked(p: Point){
       w: obj.rect.w,
       h: obj.rect.h
     }
-    hit = isInsideRect(p, shiftedRect); 
-    if(hit) break;
+    hit = isInsideRect(p, shiftedRect);
+    if(hit){
+      if(obj.event) obj.event(p);
+      break;
+    }
   };
   debugLog("inside:"+ hit);
 }
 
+const keyboardConfig = new class KeyboardConfig {
+  ppw = 20;  // [pixels width per white]
+  minOctave = 2;
+  maxOctave = 6;
 
-const keyboardConfig = {
-  ppw: 16, // [pixels per white]
-  minOctave: 2,
-  maxOctave: 6
-}
+  bpm = 120; // [beats per minute]
+  beats = 4  // [beats per measure]
+  scrollSpeed = 20; // [pixels / s]
+
+  get pxPerBeat(){ // [pixels height per beat]
+    // [pixels / sec]*[sec / min]*[min / beats]
+    return this.scrollSpeed * 60 / this.bpm;
+  }
+}();
 
 function renderKeyboard(d: DrawCtx) {
   const posX = 20;
