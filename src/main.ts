@@ -89,7 +89,7 @@ let notes: Note[] = [
 ];
 
 class Sequencer{
-
+  scale = 80 // [pixels / s]
 }
 const sequencer = new Sequencer();
 
@@ -174,7 +174,6 @@ function renderNotes(d: DrawCtx){
   d.ctx.fillStyle = "#10efff7a";
   d.ctx.fillRect(0, -baseLine , canvas.width, 1);
   d.ctx.fillText("baseline", 0, -baseLine);
-  console.log("baseLine:", -baseLine)
 
   for(const note of notes){
     let col = ncfg.note_col;
@@ -183,13 +182,11 @@ function renderNotes(d: DrawCtx){
     }
     d.ctx.fillStyle = col;
 
-    const div = 10;
+    const div = position(note.d)/2;
     for(let l=0; l<div; l++){
       const alpha = 1 - (l/div) *0.8;
-      console.log(alpha)
       const pos = position(note.d) * 1/div;
       d.ctx.fillStyle = `rgba(from ${col} r g b / ${alpha})`;
-      console.log(note.d*4*kcfg.pxPerBeat);
 
       fillRectRev(d.ctx,
         kcfg.octaveShift(note.p) + kcfg.pitchShift(note.p),
