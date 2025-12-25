@@ -88,6 +88,11 @@ let notes: Note[] = [
   {t: 1.25, d: HALF,    p: 62, sl: 1 },
 ];
 
+class Sequencer{
+
+}
+const sequencer = new Sequencer();
+
 let lastgt = 0;
 let lastFrame = 0;
 let dt = 0;
@@ -153,10 +158,47 @@ function renderMascot(d: DrawCtx){
   d.ctx.fillText(face, canvas.width-100, Math.round(canvas.height-20+floatY));
 }
 
-const notesConfig = {
+const notesCfg = {
+  note_col: "#cfcd4eff",
+  hit_col:  "#ee742dff"
 }
 
 function renderNotes(d: DrawCtx){
+  const ncfg = notesCfg;
+  const kcfg = keyboardCfg;
+
+  const baseLine = d.time * kcfg.scrollSpeed;
+  constTranslate(d, {x:layers["keyboard"].offset.x, y:canvas.height - 125 + baseLine});
+  const position = (t: number) => t * 4 * kcfg.pxPerBeat;
+
+  d.ctx.fillStyle = "#10efff7a";
+  d.ctx.fillRect(0, -baseLine , canvas.width, 1);
+  d.ctx.fillText("baseline", 0, -baseLine);
+  console.log("baseLine:", -baseLine)
+
+  for(const note of notes){
+    let col = ncfg.note_col;
+    if(position(note.t) <= baseLine && baseLine <= position(note.t+note.d)){
+      col = ncfg.hit_col;
+    }
+    d.ctx.fillStyle = col;
+
+    const div = 10;
+    for(let l=0; l<div; l++){
+      const alpha = 1 - (l/div) *0.8;
+      console.log(alpha)
+      const pos = position(note.d) * 1/div;
+      d.ctx.fillStyle = `rgba(from ${col} r g b / ${alpha})`;
+      console.log(note.d*4*kcfg.pxPerBeat);
+
+      fillRectRev(d.ctx,
+        kcfg.octaveShift(note.p) + kcfg.pitchShift(note.p),
+        -position(note.t) - pos*l,
+        kcfg.ppw,
+        pos
+      );
+    }
+  }
 }
 function renderScore(d: DrawCtx){
 }
@@ -232,11 +274,17 @@ function renderFixedUI(d: DrawCtx){
   d.ctx.fillStyle = "#eee"
   const margin = 10;
   d.ctx.fillRect(margin, margin, height-margin*2, height-margin*2);
+  d.ctx.translate(30, 0);
+  d.ctx.fillRect(margin, margin, height-margin*2, height-margin*2);
 }
 
 function testEvent(p: Point){
-  debugLog("testEvent!")
+  debugLog("pause");
   pause = !pause;
+}
+function reset(p: Point){
+  debugLog("reset");
+  lastFrame = 0;
 }
 
 type Rect = {
@@ -260,7 +308,13 @@ function registerPhysicalObject(){
       rect:{ x:10, y:10, w:20, h:20},
       layer: layers["fixedUI"],
       event: testEvent
-    }
+    },
+    {
+      id: "reset",
+      rect:{ x:40, y:10, w:20, h:20},
+      layer: layers["fixedUI"],
+      event: reset
+    },
   );
 }
 registerPhysicalObject();
@@ -283,56 +337,107 @@ function checkClicked(p: Point){
 }
 
 class MusicContext {
-  bpm = 120; // [beats per minute]
+  bpm = 120;  // [beats per minute]
+  beats = 4;  // [beats per measure]
 }
 const musicCtx = new MusicContext();
 
-const keyboardCfg = new class KeyboardConfig {
-  ppw = 20;  // [pixels width per white]
+class KeyboardConfig {
+  ppw = 20;   // [pixels width per white]
+  margin = 2;
+  height = 60; // [pixels]
   minOctave = 2;
-  maxOctave = 6;
+  Octaves = 4;
 
-  beats = 4  // [beats per measure]
-  scrollSpeed = 20; // [pixels / s]
+  scrollSpeed = 80; // [pixels / s]
 
-  
-  whiteOrder = [0,2,4,5,7,9,11]; // C D E F G A B
+  offsetX = 10;
 
   get pxPerBeat(){ // [pixels height per beat]
     // [pixels / sec]*[sec / min]*[min / beats]
     return this.scrollSpeed * 60 / musicCtx.bpm;
   }
-
-  pitchToX(pitch: number) { // pixels
-    const octave = Math.floor(pitch / 12) - 1; // MIDIオクターブ補正
-    const noteInOctave = pitch % 12;
-
-    const octaveShift = (octave - this.minOctave) * 7 * this.ppw 
-    const pitchShift = this.whiteOrder.indexOf(noteInOctave) * this.ppw;
-    return octaveShift + pitchShift;
+  noteInOctave(pitch: number) {
+    return pitch % 12;
   }
+  octaveShift(pitch: number){
+    const octave = Math.floor(pitch / 12) - 1; // MIDIオクターブ補正
+    return (octave - this.minOctave) * 7 * this.ppw;
+  }
+  pitchShift(pitch: number) { // pixels
+    const noteInOctave = this.noteInOctave(pitch);
+    return KeyboardConfig.whiteOrder.indexOf(noteInOctave) * this.ppw;
+  }
+  static whiteOrder = [0,2,4,5,7,9,11]; // C D E F G A B
 
-}();
+  static octaveLayout = {
+    white: [
+      { i: 0, shape: "left" },
+      { i: 1, shape: "center" },
+      { i: 2, shape: "right" },
+      { i: 3, shape: "left" },
+      { i: 4, shape: "center" },
+      { i: 5, shape: "center" },
+      { i: 6, shape: "right" },
+    ],
+    black: [0, 1, 3, 4, 5]
+  } as const;
+};
+const keyboardCfg = new KeyboardConfig();
+
+function drawWhiteKey(n: number, shape: string, ctx: CanvasRenderingContext2D, k: KeyboardConfig) {
+  const x = n * k.ppw;
+  const ySplit = k.height * 0.7;
+  if (shape === "left") {
+    ctx.fillRect(x, 0, k.ppw*0.6-k.margin, ySplit+k.margin);
+  }
+  if (shape === "center") {
+    ctx.fillRect((n+0.3)*k.ppw, 0, k.ppw*0.3-k.margin, ySplit+k.margin);
+  }
+  if (shape === "right") {
+    ctx.fillRect((n+0.3)*k.ppw, 0, k.ppw*0.6, ySplit+k.margin);
+  }
+  ctx.fillRect(x, ySplit+k.margin, k.ppw-k.margin, k.height*0.4-k.margin);
+}
+function drawBlackKey (n: number, ctx: CanvasRenderingContext2D, k: KeyboardConfig){
+  withCtx(ctx, ()=>{
+    ctx.translate(0.5, 0.5);
+    ctx.strokeRect((n+0.5)*k.ppw+k.margin, 0, k.ppw*0.6-1, k.height*0.7-1);
+  });
+};
+
+function octaveToLabel(oct: number): string | null {
+  if (oct === 4) return "c4";
+  return null;
+}
 
 function renderKeyboard(d: DrawCtx) {
-  const posX = 20;
-  const keyWidth = 18;
-  const keyHeight = 60;
-  const baseY = canvas.height - keyHeight -50;
-  d.ctx.globalAlpha = 0.8;
+  const kcfg = keyboardCfg;
 
-  // white
-  for (let i = 0; i < 7; i++) {
-    d.ctx.strokeStyle = "#f8f8f8";
-    d.ctx.strokeRect(posX + i * keyWidth, baseY, keyWidth - 3, keyHeight);
+  const baseX = kcfg.offsetX;
+  const baseY = canvas.height - kcfg.height -50;
+  constTranslate(d, {x: baseX, y: baseY});
+
+  const white_col = "#b1b7daff";
+  d.ctx.fillStyle = white_col;
+  d.ctx.strokeStyle = white_col;
+
+  d.ctx.globalAlpha = 0.75;
+
+  for (let oct = 0; oct < kcfg.Octaves; oct++) {
+    const label = octaveToLabel(kcfg.minOctave + oct);
+    if(label){
+      d.ctx.textBaseline = "bottom"
+      d.ctx.fillText(label, 0, 0);
+    }
+    KeyboardConfig.octaveLayout.white.forEach(k =>
+      drawWhiteKey(k.i, k.shape, d.ctx, kcfg)
+    );
+    KeyboardConfig.octaveLayout.black.forEach(i =>
+      drawBlackKey(i, d.ctx, kcfg)
+    );
+    ctx.translate(kcfg.ppw * 7, 0);
   }
-  // black
-  [1,2,4,5,6].forEach(i => {
-    d.ctx.fillStyle = bg_col;
-    d.ctx.fillRect(posX + i * keyWidth - keyWidth/3 -2, baseY, keyWidth/2 + 4, keyHeight*0.7 + 2);
-    d.ctx.strokeStyle = "#f8f8f8";
-    d.ctx.strokeRect(posX + i * keyWidth- keyWidth/3, baseY, keyWidth/2, keyHeight*0.7);
-  });
 }
 
 
@@ -351,6 +456,14 @@ function fillRectC(
 ){
   ctx.fillRect(x-(w/2), y-(h/2), w, h);
 }
+
+function fillRectRev(
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number
+){
+  ctx.fillRect(x, y-h, w, h);
+}
+
 
 function withCtx(
   ctx: CanvasRenderingContext2D,
