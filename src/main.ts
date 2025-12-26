@@ -80,30 +80,72 @@ type Note = {
   sl: number;   // StaffLine C=0
 }
 let notes: Note[] = [
-  {t: 0,    d: QUARTER, p: 60, sl: 0 },
-  {t: 0.25, d: QUARTER, p: 62, sl: 1 },
-  {t: 0.5,  d: QUARTER, p: 64, sl: 2 },
-  {t: 0.75, d: QUARTER, p: 62, sl: 1 },
-  {t: 1,    d: QUARTER, p: 60, sl: 0 },
-  {t: 1.25, d: HALF,    p: 62, sl: 1 },
+  {t: 0, d: 1, p: 60, sl: 0 },
+  {t: 1, d: 1, p: 62, sl: 1 },
+  {t: 2, d: 1, p: 64, sl: 2 },
+  {t: 3, d: 1, p: 62, sl: 1 },
+  {t: 4, d: 1, p: 60, sl: 0 },
+  {t: 5, d: 2, p: 62, sl: 1 },
 ];
 
 class Sequencer{
-  scale = 80 // [pixels / s]
-}
-const sequencer = new Sequencer();
+  constructor(mctx: MusicContext){
+    this.musicCtx = mctx;
+  }
+  musicCtx: MusicContext;
+  scale:  number = 40; // [pixels / beat]
 
-let lastgt = 0;
-let lastFrame = 0;
-let dt = 0;
-let pause = false;
+  #cursor: number = 0; // [beats]
+  #dt:     number = 0; // [sec.]
+  #lastgt: number = 0; // [ms]
+  #pause: boolean = false;
+
+  get cursor(){ return this.#cursor }
+  tick(now: number){
+    this.#dt = (now - this.#lastgt) / 1000;
+    this.#cursor += this.#pause ? this.timeToBeats(this.#dt) : 0;
+    this.#lastgt = now;
+  }
+  timeToBeats(sec: number){
+    // [beats / min]*[min per sec]*[sec]
+    return this.musicCtx.bpm * sec / 60;
+  }
+  beatsToTime(beats: number){
+    // [beats]*[sec / min]*[min / beats]
+    return beats * 60 / this.musicCtx.bpm;
+  }
+  seekByBeats(beat: number){
+    this.#cursor = beat;
+  }
+  get dt(){ return this.#dt }
+  get tSec(){
+    return this.beatsToTime(this.#cursor);
+  }
+  get pause(){ return this.#pause; }
+  set pause(p :boolean){
+    this.#pause = p;
+  }
+}
+const sequencer = new Sequencer({
+  bpm: 120,  // [beats per min.]
+  beats: 4,  // [beats per measure]
+  beatUnit: 4,
+  notes: notes
+});
+
+type MusicContext = {
+  bpm: number,    // [beats per min.]
+  beats: number,  // [beats per measure]
+  beatUnit: number,
+  notes: Note[]
+}
+
+const globalt = () => performance.now() / 1000;
 
 // ============== mainloop ==============
 function loop(now: number) {
-  dt = (now - lastgt) / 1000;
-  const t = pause ? lastFrame + dt : lastFrame;
-  lastFrame = t;
-  lastgt = now;
+  sequencer.tick(now);
+  const t = sequencer.tSec;
 
   ctx.font = "16px misaki";
 
@@ -143,7 +185,7 @@ function renderMascot(d: DrawCtx){
   const div = 40;
   for(let t=0; t<div; t++){
     const alpha = 1 - t/div;
-    const wob = Math.sin((d.time - t*0.016) * 3);
+    const wob = Math.sin((globalt() - t*0.016) * 3);
     d.ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
     fillRectC(d.ctx, canvas.width-50 + t, 40 + wob*20, 2, 2);
   }
@@ -191,7 +233,7 @@ function renderNotes(d: DrawCtx){
       fillRectRev(d.ctx,
         kcfg.octaveShift(note.p) + kcfg.pitchShift(note.p),
         -position(note.t) - pos*l,
-        kcfg.ppw,
+        kcfg.ppw-kcfg.margin,
         pos
       );
     }
@@ -224,8 +266,9 @@ function renderDebugWindow(d: DrawCtx){
   d.ctx.translate(20, 20);
   [
     "debug",
-    `t: ${digit(d.time)}`,
-    `global_t: ${digit(performance.now()/1000)}`,
+    `beat: ${digit(sequencer.cursor)}`,
+    `t: ${digit(sequencer.tSec)}`,
+    `global_t: ${digit(globalt())}`,
     `x: ${mouse.x}, y: ${mouse.y}`,
   ].forEach(line => {
     d.ctx.fillText(line, 0, 0);
@@ -235,7 +278,7 @@ function renderDebugWindow(d: DrawCtx){
 
   logQueue.forEach(line => {
     d.ctx.fillText(line.log, 0, 0);
-    line.t -= dt;
+    line.t -= sequencer.dt;
     br();
   });
   while(logQueue.length > 0 && logQueue[0].t <= 0){
@@ -277,11 +320,11 @@ function renderFixedUI(d: DrawCtx){
 
 function testEvent(p: Point){
   debugLog("pause");
-  pause = !pause;
+  sequencer.pause = !sequencer.pause;
 }
 function reset(p: Point){
   debugLog("reset");
-  lastFrame = 0;
+  sequencer.seekByBeats(0);
 }
 
 type Rect = {
@@ -333,12 +376,6 @@ function checkClicked(p: Point){
   };
 }
 
-class MusicContext {
-  bpm = 120;  // [beats per minute]
-  beats = 4;  // [beats per measure]
-}
-const musicCtx = new MusicContext();
-
 class KeyboardConfig {
   ppw = 20;   // [pixels width per white]
   margin = 2;
@@ -352,7 +389,7 @@ class KeyboardConfig {
 
   get pxPerBeat(){ // [pixels height per beat]
     // [pixels / sec]*[sec / min]*[min / beats]
-    return this.scrollSpeed * 60 / musicCtx.bpm;
+    return this.scrollSpeed * 60 / sequencer.musicCtx.bpm;
   }
   noteInOctave(pitch: number) {
     return pitch % 12;
